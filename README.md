@@ -37,3 +37,10 @@ OPENAI_EMBED_MODEL=text-embedding-3-large
 - `OPENAI_VLM_MODEL`: used for image -> description.
 - `OPENAI_RAG_MODEL`: used for price estimation synthesis.
 - `OPENAI_EMBED_MODEL`: used for vector embeddings.
+
+## One-command dev
+Run frontend and backend together:
+
+```bash
+./scripts/dev.sh
+```

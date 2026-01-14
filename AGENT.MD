@@ -20,20 +20,28 @@ Build a used instrument valuation AI agent with:
 - Keep prompts, schemas, and API contracts explicit and versioned.
 - Prefer structured outputs from the VLM (JSON schema) to reduce parsing.
 
-## Repo Layout (planned)
-- /frontend: React app (Bun, package.json, bun.lockb).
+## Repo Layout
+- /frontend: React app (Bun, package.json, bun.lock).
 - /backend: FastAPI app (pyproject.toml, uv).
-- /backend/rag: LangChain pipelines, embedding, retrieval logic.
-- /backend/vlm: VLM client and prompt templates.
+- /backend/app: FastAPI application code.
+- /backend/app/rag: LangChain pipelines and vector store access.
+- /backend/app/vlm: VLM client and prompt templates.
 
 ## Dependency Management
 - Frontend uses Bun for install, dev, and build tasks.
 - Backend uses uv for Python dependencies and virtual envs.
+- Chroma requires Python 3.13 or lower.
+
+## Configuration
+- OpenAI models are set via `OPENAI_VLM_MODEL`, `OPENAI_RAG_MODEL`, and
+  `OPENAI_EMBED_MODEL` in `backend/.env`.
+- Vector persistence path is set by `RAG_PERSIST_DIR` (default `.rag_store`).
 
 ## RAG Guidance
 - Normalize VLM output into a stable schema (brand, model, year, condition).
 - Store both raw description and normalized fields for retrieval.
 - Include price ranges and market source metadata in the index.
+- Use a persistent vector store (Chroma) and seed with sample data.
 
 ## APIs (high level)
 - POST /api/describe: image -> structured description
