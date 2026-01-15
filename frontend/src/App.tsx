@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   describeInstrument,
   estimateValue,
   InstrumentDescription,
+  StreamEvent,
   ValuationResult,
+  streamDescribe,
+  streamEstimate,
 } from "./api";
 
 const emptyDescription: InstrumentDescription = {
@@ -24,6 +27,43 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
+type PipelineState = "idle" | "running" | "done";
+type TerminalLine = {
+  text: string;
+  tone?: "muted" | "accent" | "ok" | "warn";
+  prefix?: string;
+};
+
+const formatFileSize = (bytes: number) => {
+  if (!Number.isFinite(bytes)) {
+    return "--";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+  return `${(kb / 1024).toFixed(2)} MB`;
+};
+
+const formatPipelineStatus = (state: PipelineState) => {
+  switch (state) {
+    case "done":
+      return "完了";
+    case "running":
+      return "実行中";
+    default:
+      return "待機";
+  }
+};
+
+const clearTimers = (timersRef: { current: number[] }) => {
+  timersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+  timersRef.current = [];
+};
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState<InstrumentDescription>(
@@ -34,6 +74,28 @@ export default function App() {
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+  const [imageMeta, setImageMeta] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [visionState, setVisionState] = useState<PipelineState>("idle");
+  const [visionActiveIndex, setVisionActiveIndex] = useState(-1);
+  const [visionCompleted, setVisionCompleted] = useState(0);
+  const [ragState, setRagState] = useState<PipelineState>("idle");
+  const [ragActiveIndex, setRagActiveIndex] = useState(-1);
+  const [ragCompleted, setRagCompleted] = useState(0);
+  const [consoleLines, setConsoleLines] = useState<string[]>([]);
+  const [streamingActive, setStreamingActive] = useState(false);
+  const [streamingPhase, setStreamingPhase] = useState<"vision" | "rag" | null>(
+    null,
+  );
+  const visionTimersRef = useRef<number[]>([]);
+  const ragTimersRef = useRef<number[]>([]);
+  const consoleIntervalRef = useRef<number | null>(null);
+  const streamTokenRef = useRef(0);
+  const describeAbortRef = useRef<AbortController | null>(null);
+  const estimateAbortRef = useRef<AbortController | null>(null);
+  const autoEstimateRef = useRef(false);
 
   const previewUrl = useMemo(
     () => (file ? URL.createObjectURL(file) : ""),
@@ -48,6 +110,519 @@ export default function App() {
     };
   }, [previewUrl]);
 
+  useEffect(() => {
+    return () => {
+      describeAbortRef.current?.abort();
+      estimateAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!previewUrl) {
+      setImageMeta(null);
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      setImageMeta({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      setImageMeta(null);
+    };
+    image.src = previewUrl;
+
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [previewUrl]);
+
+  const hasDescription = useMemo(() => {
+    return Boolean(
+      description.category ||
+        description.brand ||
+        description.model ||
+        description.year ||
+        description.condition ||
+        description.materials.length ||
+        description.features.length ||
+        description.notes,
+    );
+  }, [description]);
+
+  const hasValuation = Boolean(valuation);
+
+  const visionSteps = useMemo(
+    () => [
+      {
+        title: "入力準備",
+        detail: "アップロード画像を読み込み",
+      },
+      {
+        title: "画像正規化",
+        detail: "解析入力向けに画像を整形",
+      },
+      {
+        title: "視覚推論",
+        detail: "VLMで特徴抽出を実行",
+      },
+      {
+        title: "構造化解析",
+        detail: "抽出結果をJSONへ変換",
+      },
+    ],
+    [],
+  );
+
+  const ragSteps = useMemo(
+    () => [
+      {
+        title: "クエリ構築",
+        detail: "検索用サマリを生成",
+      },
+      {
+        title: "ベクトル検索",
+        detail: "類似事例を取得",
+      },
+      {
+        title: "コンテキスト構築",
+        detail: "価格根拠を整理",
+      },
+      {
+        title: "価格推論",
+        detail: "LLMでレンジを算出",
+      },
+    ],
+    [],
+  );
+
+  const analysisHighlights = useMemo(() => {
+    const tags: string[] = [];
+    if (description.category) {
+      tags.push(`カテゴリ: ${description.category}`);
+    }
+    if (description.brand) {
+      tags.push(`ブランド: ${description.brand}`);
+    }
+    if (description.model) {
+      tags.push(`モデル: ${description.model}`);
+    }
+    if (description.year) {
+      tags.push(`年式: ${description.year}`);
+    }
+    if (description.condition) {
+      tags.push(`状態: ${description.condition}`);
+    }
+    if (description.materials.length) {
+      tags.push(`素材: ${description.materials.slice(0, 2).join("・")}`);
+    }
+    if (description.features.length) {
+      tags.push(`特徴: ${description.features.slice(0, 2).join("・")}`);
+    }
+    return tags;
+  }, [description]);
+
+  const evidenceHighlights = useMemo(
+    () => valuation?.evidence.slice(0, 3) ?? [],
+    [valuation],
+  );
+
+  const consolePools = useMemo(
+    () => ({
+      idle: [
+        "待機中: 画像がアップロードされるのを待っています。",
+        "準備完了: VLMエンジンはスタンバイ中。",
+        "RAGインデックス: 接続済み。",
+        "推論コンテキスト: 初期化済み。",
+      ],
+      ready: [
+        "特徴抽出が完了しました。",
+        "必要に応じて手動で調整できます。",
+        "必要なら再推論できます。",
+      ],
+      describing: [
+        "画像を正規化しています...",
+        "輪郭を検出しています...",
+        "材質のテクスチャを解析しています...",
+        "状態シグナルを抽出しています...",
+        "説明文を構造化しています...",
+        "カテゴリ候補を照合しています...",
+      ],
+      estimating: [
+        "特徴をベクトルへ変換...",
+        "ベクトルDBにクエリを送信...",
+        "近傍結果をマージ中...",
+        "価格事例をスコアリング...",
+        "推論プロンプトを構築...",
+        "価格レンジを合成中...",
+      ],
+      complete: [
+        "推論完了: 価格レンジを算出しました。",
+        "エビデンスの整合性を確認済み。",
+        "信頼度を評価しました。",
+        "提示準備完了。",
+      ],
+    }),
+    [],
+  );
+
+  const logFormatters = useMemo(
+    () => ({
+      "vision.upload_received": () => "画像を受信しました。",
+      "vision.image_encoded": () => "画像を正規化しました。",
+      "vision.request_sent": () => "VLMへ問い合わせ中...",
+      "vision.response_parsed": () => "解析結果を構造化しました。",
+      "rag.query_build": () => "検索クエリを構築しています...",
+      "rag.retrieve_start": () => "ベクトルDBへ検索中...",
+      "rag.retrieve_done": (meta?: Record<string, number | string>) => {
+        const count =
+          typeof meta?.count === "number"
+            ? meta.count
+            : Number.parseInt(String(meta?.count ?? ""), 10);
+        return Number.isFinite(count)
+          ? `類似事例 ${count} 件を取得しました。`
+          : "類似事例を取得しました。";
+      },
+      "rag.context_build": () => "エビデンスを整理しています...",
+      "rag.request_sent": () => "推論モデルへ問い合わせています...",
+    }),
+    [],
+  );
+
+  const consoleMode =
+    status !== "idle"
+      ? status
+      : hasValuation
+        ? "complete"
+        : hasDescription
+          ? "ready"
+          : "idle";
+
+  const appendConsoleLine = (line: string) => {
+    setConsoleLines((prev) => {
+      const nextLines = [...prev, line];
+      return nextLines.slice(-6);
+    });
+  };
+
+  const handleStreamEvent = (event: StreamEvent, token: number) => {
+    if (token !== streamTokenRef.current) {
+      return;
+    }
+
+    if (event.type === "log") {
+      const formatter = logFormatters[event.code as keyof typeof logFormatters];
+      const message = formatter ? formatter(event.meta) : `ログ: ${event.code}`;
+      appendConsoleLine(message);
+      return;
+    }
+
+    if (event.type === "step") {
+      if (event.phase === "vision") {
+        setVisionState("running");
+        if (event.status === "start") {
+          setVisionActiveIndex(event.index);
+          return;
+        }
+        setVisionCompleted((prev) => Math.max(prev, event.index + 1));
+        setVisionActiveIndex((prev) => (prev === event.index ? -1 : prev));
+        if (event.index + 1 >= visionSteps.length) {
+          setVisionState("done");
+        }
+        return;
+      }
+
+      if (event.phase === "rag") {
+        setRagState("running");
+        if (event.status === "start") {
+          setRagActiveIndex(event.index);
+          return;
+        }
+        setRagCompleted((prev) => Math.max(prev, event.index + 1));
+        setRagActiveIndex((prev) => (prev === event.index ? -1 : prev));
+        if (event.index + 1 >= ragSteps.length) {
+          setRagState("done");
+        }
+      }
+      return;
+    }
+
+    if (event.type === "result") {
+      if (event.phase === "vision") {
+        setDescription(event.payload as InstrumentDescription);
+        setVisionState("done");
+        setVisionActiveIndex(-1);
+        setVisionCompleted(visionSteps.length);
+      } else {
+        setValuation(event.payload as ValuationResult);
+        setRagState("done");
+        setRagActiveIndex(-1);
+        setRagCompleted(ragSteps.length);
+      }
+      return;
+    }
+
+    if (event.type === "error") {
+      setError(event.message);
+      appendConsoleLine(`エラー: ${event.message}`);
+    }
+  };
+
+  useEffect(() => {
+    if (consoleIntervalRef.current !== null) {
+      window.clearInterval(consoleIntervalRef.current);
+      consoleIntervalRef.current = null;
+    }
+
+    if (streamingActive) {
+      return;
+    }
+
+    const pool = consolePools[consoleMode];
+    const seed = pool.slice(0, 4);
+    setConsoleLines(seed);
+
+    if (consoleMode === "describing" || consoleMode === "estimating") {
+      let index = seed.length;
+      consoleIntervalRef.current = window.setInterval(() => {
+        setConsoleLines((prev) => {
+          const next = pool[index % pool.length];
+          index += 1;
+          const nextLines = [...prev, next];
+          return nextLines.slice(-6);
+        });
+      }, 650);
+    }
+
+    return () => {
+      if (consoleIntervalRef.current !== null) {
+        window.clearInterval(consoleIntervalRef.current);
+        consoleIntervalRef.current = null;
+      }
+    };
+  }, [consoleMode, consolePools, streamingActive]);
+
+  useEffect(() => {
+    if (streamingPhase === "vision") {
+      clearTimers(visionTimersRef);
+      return;
+    }
+
+    if (status !== "describing") {
+      clearTimers(visionTimersRef);
+      setVisionState(hasDescription ? "done" : "idle");
+      setVisionActiveIndex(-1);
+      setVisionCompleted(hasDescription ? visionSteps.length : 0);
+      return;
+    }
+
+    clearTimers(visionTimersRef);
+    setVisionState("running");
+    setVisionActiveIndex(0);
+    setVisionCompleted(0);
+
+    visionSteps.forEach((_, index) => {
+      const timerId = window.setTimeout(() => {
+        setVisionActiveIndex(index);
+        setVisionCompleted(index);
+      }, 600 * index);
+      visionTimersRef.current.push(timerId);
+    });
+
+    const finishId = window.setTimeout(() => {
+      setVisionActiveIndex(-1);
+      setVisionCompleted(visionSteps.length);
+      setVisionState("done");
+    }, 600 * visionSteps.length + 200);
+    visionTimersRef.current.push(finishId);
+
+    return () => {
+      clearTimers(visionTimersRef);
+    };
+  }, [hasDescription, status, streamingPhase, visionSteps]);
+
+  useEffect(() => {
+    if (streamingPhase === "rag") {
+      clearTimers(ragTimersRef);
+      return;
+    }
+
+    if (status !== "estimating") {
+      clearTimers(ragTimersRef);
+      setRagState(hasValuation ? "done" : "idle");
+      setRagActiveIndex(-1);
+      setRagCompleted(hasValuation ? ragSteps.length : 0);
+      return;
+    }
+
+    clearTimers(ragTimersRef);
+    setRagState("running");
+    setRagActiveIndex(0);
+    setRagCompleted(0);
+
+    ragSteps.forEach((_, index) => {
+      const timerId = window.setTimeout(() => {
+        setRagActiveIndex(index);
+        setRagCompleted(index);
+      }, 600 * index);
+      ragTimersRef.current.push(timerId);
+    });
+
+    const finishId = window.setTimeout(() => {
+      setRagActiveIndex(-1);
+      setRagCompleted(ragSteps.length);
+      setRagState("done");
+    }, 600 * ragSteps.length + 200);
+    ragTimersRef.current.push(finishId);
+
+    return () => {
+      clearTimers(ragTimersRef);
+    };
+  }, [hasValuation, ragSteps, status, streamingPhase]);
+
+  const aiState =
+    status === "describing"
+      ? "scanning"
+      : status === "estimating"
+        ? "reasoning"
+        : hasValuation
+          ? "complete"
+          : hasDescription
+            ? "ready"
+            : "idle";
+
+  const aiStatusLabel =
+    status === "describing"
+      ? "画像解析中"
+      : status === "estimating"
+        ? "推論中"
+        : hasValuation
+          ? "推論完了"
+          : hasDescription
+            ? "解析完了"
+            : "待機中";
+
+  const aiStatusDetail =
+    status === "describing"
+      ? "輪郭・材質・状態を推定し、特徴を構造化しています。"
+      : status === "estimating"
+        ? "ベクトル検索と類似事例の照合を進めています。"
+        : hasValuation
+          ? "価格帯と根拠を提示しています。"
+          : hasDescription
+            ? "必要に応じて特徴を修正し、再推論できます。"
+            : "画像をアップロードすると解析が始まります。";
+
+  const activeStepLabel =
+    status === "describing"
+      ? visionSteps[visionActiveIndex]?.title
+      : status === "estimating"
+        ? ragSteps[ragActiveIndex]?.title
+        : null;
+
+  const imageResolution = imageMeta
+    ? `${imageMeta.width} x ${imageMeta.height}`
+    : "未解析";
+  const aspectRatio = imageMeta
+    ? (imageMeta.width / imageMeta.height).toFixed(2)
+    : "--";
+
+  const terminalLines = useMemo(() => {
+    const statusTone: TerminalLine["tone"] =
+      aiState === "complete"
+        ? "ok"
+        : aiState === "scanning" || aiState === "reasoning"
+          ? "accent"
+          : "muted";
+    const modeLabel = streamingPhase
+      ? streamingPhase === "vision"
+        ? "視覚"
+        : "RAG"
+      : "待機";
+    const visionProgress = `${visionCompleted}/${visionSteps.length}`;
+    const ragProgress = `${ragCompleted}/${ragSteps.length}`;
+
+    const lines: TerminalLine[] = [
+      {
+        prefix: "#",
+        tone: "accent",
+        text: "AI推論ターミナル / VAL-CORE v1.8.2",
+      },
+      {
+        prefix: "$",
+        tone: statusTone,
+        text: `状態 ${aiStatusLabel} | モード ${modeLabel}`,
+      },
+      {
+        prefix: "$",
+        text: `入力 ${file ? file.name : "未選択"} | ${file?.type || "未設定"} | ${
+          file ? formatFileSize(file.size) : "--"
+        }`,
+      },
+      {
+        prefix: "$",
+        text: `画像 ${imageResolution} | 比率 ${aspectRatio}`,
+      },
+      {
+        prefix: "$",
+        text: `視覚 ${formatPipelineStatus(visionState)} ${visionProgress}${
+          status === "describing" && activeStepLabel ? ` | ${activeStepLabel}` : ""
+        }`,
+      },
+      {
+        prefix: "$",
+        text: `RAG ${formatPipelineStatus(ragState)} ${ragProgress}${
+          status === "estimating" && activeStepLabel ? ` | ${activeStepLabel}` : ""
+        }`,
+      },
+      analysisHighlights.length
+        ? {
+            prefix: "$",
+            text: `特徴 ${analysisHighlights.slice(0, 3).join(" / ")}`,
+          }
+        : { prefix: "$", tone: "muted", text: "特徴 未取得" },
+      evidenceHighlights.length
+        ? {
+            prefix: "$",
+            text: `参照 ${evidenceHighlights.slice(0, 2).join(" / ")}`,
+          }
+        : { prefix: "$", tone: "muted", text: "参照 未取得" },
+      { prefix: ">", tone: "muted", text: "ログストリーム" },
+      ...consoleLines.map<TerminalLine>((line) => ({
+        prefix: ">",
+        text: line,
+      })),
+    ];
+
+    return lines;
+  }, [
+    activeStepLabel,
+    aiState,
+    aiStatusLabel,
+    analysisHighlights,
+    aspectRatio,
+    consoleLines,
+    evidenceHighlights,
+    file,
+    imageResolution,
+    ragCompleted,
+    ragState,
+    ragSteps.length,
+    status,
+    streamingPhase,
+    visionCompleted,
+    visionState,
+    visionSteps.length,
+  ]);
+
+  const primaryLabel =
+    status === "describing"
+      ? "解析中..."
+      : status === "estimating"
+        ? "推論中..."
+        : "解析と推論を開始";
+
   const updateField = <K extends keyof InstrumentDescription>(
     key: K,
     value: InstrumentDescription[K],
@@ -61,38 +636,157 @@ export default function App() {
       return;
     }
 
+    autoEstimateRef.current = true;
+    const token = streamTokenRef.current + 1;
+    streamTokenRef.current = token;
+    describeAbortRef.current?.abort();
+    const controller = new AbortController();
+    describeAbortRef.current = controller;
+
     setStatus("describing");
     setError(null);
     setValuation(null);
+    setStreamingActive(true);
+    setStreamingPhase("vision");
+    setVisionState("running");
+    setVisionActiveIndex(-1);
+    setVisionCompleted(0);
+    setConsoleLines(["ストリーム接続中..."]);
 
+    let receivedEvent = false;
+    let shouldAutoEstimate = false;
     try {
-      const result = await describeInstrument(file);
-      setDescription(result);
+      await streamDescribe(
+        file,
+        (event) => {
+          receivedEvent = true;
+          if (event.type === "result" && event.phase === "vision") {
+            shouldAutoEstimate = true;
+          }
+          handleStreamEvent(event, token);
+        },
+        controller.signal,
+      );
+
+      if (!receivedEvent) {
+        throw new Error("Stream ended");
+      }
     } catch (err) {
+      if (controller.signal.aborted || token !== streamTokenRef.current) {
+        return;
+      }
+
+      setStreamingActive(false);
+      setStreamingPhase(null);
+
+      if (!receivedEvent) {
+        try {
+          const result = await describeInstrument(file);
+          setDescription(result);
+          shouldAutoEstimate = true;
+          return;
+        } catch (fallbackError) {
+          setError(
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : "解析に失敗しました。",
+          );
+        }
+      }
+
       setError(err instanceof Error ? err.message : "解析に失敗しました。");
     } finally {
-      setStatus("idle");
+      if (token === streamTokenRef.current) {
+        setStreamingActive(false);
+        setStreamingPhase(null);
+        setStatus("idle");
+      }
+      if (!shouldAutoEstimate) {
+        autoEstimateRef.current = false;
+      }
     }
   };
 
   const handleEstimate = async () => {
+    const token = streamTokenRef.current + 1;
+    streamTokenRef.current = token;
+    estimateAbortRef.current?.abort();
+    const controller = new AbortController();
+    estimateAbortRef.current = controller;
+
     setStatus("estimating");
     setError(null);
+    setStreamingActive(true);
+    setStreamingPhase("rag");
+    setRagState("running");
+    setRagActiveIndex(-1);
+    setRagCompleted(0);
+    setConsoleLines(["ストリーム接続中..."]);
 
+    let receivedEvent = false;
     try {
-      const result = await estimateValue(description);
-      setValuation(result);
+      await streamEstimate(
+        description,
+        (event) => {
+          receivedEvent = true;
+          handleStreamEvent(event, token);
+        },
+        controller.signal,
+      );
+
+      if (!receivedEvent) {
+        throw new Error("Stream ended");
+      }
     } catch (err) {
+      if (controller.signal.aborted || token !== streamTokenRef.current) {
+        return;
+      }
+
+      setStreamingActive(false);
+      setStreamingPhase(null);
+
+      if (!receivedEvent) {
+        try {
+          const result = await estimateValue(description);
+          setValuation(result);
+          return;
+        } catch (fallbackError) {
+          setError(
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : "見積もりに失敗しました。",
+          );
+        }
+      }
+
       setError(err instanceof Error ? err.message : "見積もりに失敗しました。");
     } finally {
-      setStatus("idle");
+      if (token === streamTokenRef.current) {
+        setStreamingActive(false);
+        setStreamingPhase(null);
+        setStatus("idle");
+      }
     }
   };
+
+  useEffect(() => {
+    if (!autoEstimateRef.current) {
+      return;
+    }
+    if (status !== "idle") {
+      return;
+    }
+    if (!hasDescription) {
+      return;
+    }
+    autoEstimateRef.current = false;
+    void handleEstimate();
+  }, [hasDescription, status]);
 
   return (
     <div className="page">
       <header className="hero">
-        <p className="eyebrow">Used Instrument Valuation</p>
+        <p className="eyebrow">中古楽器バリュエーション</p>
         <h1>中古楽器 価格査定AIエージェント</h1>
         <p className="lead">
           画像から特徴を抽出し、市場データに基づいた参考価格を提示します。
@@ -100,10 +794,10 @@ export default function App() {
       </header>
 
       <main className="content">
-        <section className="panel">
+        <section className="panel upload-panel">
           <div className="panel-header">
             <h2>1. 画像をアップロード</h2>
-            <p>楽器全体が写る画像を推奨します。</p>
+            <p>画像を選択したらワンクリックで解析と推論を実行します。</p>
           </div>
           <label className="upload">
             <input
@@ -128,14 +822,46 @@ export default function App() {
             onClick={handleDescribe}
             disabled={status !== "idle" || !file}
           >
-            {status === "describing" ? "解析中..." : "画像から特徴を抽出"}
+            {primaryLabel}
           </button>
         </section>
 
-        <section className="panel">
+        <section className={`panel ai-panel ${aiState}`}>
           <div className="panel-header">
-            <h2>2. 特徴を確認</h2>
-            <p>必要に応じて編集してください。</p>
+            <h2>2. 推論ターミナル</h2>
+            <p>AIの処理を端末ログとしてライブ表示します。</p>
+          </div>
+          <div className="terminal-shell">
+            <div className="terminal-titlebar">
+              <div className="terminal-dots" aria-hidden="true">
+                <span className="terminal-dot" />
+                <span className="terminal-dot" />
+                <span className="terminal-dot" />
+              </div>
+              <span className="terminal-title">AI推論コンソール</span>
+              <span className="terminal-status">{aiStatusLabel}</span>
+            </div>
+            <div className="terminal-body">
+              <ul className="terminal-lines">
+                {terminalLines.map((line, index) => (
+                  <li
+                    key={`${line.text}-${index}`}
+                    className={`terminal-line ${line.tone ?? ""}`}
+                  >
+                    <span className="terminal-prefix">{line.prefix ?? "$"}</span>
+                    <span className="terminal-text">{line.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="terminal-footnote">{aiStatusDetail}</p>
+        </section>
+
+        <section className="panel edit-panel">
+          <div className="panel-header">
+            <h2>3. 特徴を確認（任意）</h2>
+            <p>必要に応じて編集し、再推論できます。</p>
           </div>
           <div className="grid">
             <label>
@@ -226,15 +952,15 @@ export default function App() {
           <button
             className="primary"
             onClick={handleEstimate}
-            disabled={status !== "idle"}
+            disabled={status !== "idle" || !hasDescription}
           >
-            {status === "estimating" ? "算出中..." : "参考価格を見積もる"}
+            {status === "estimating" ? "推論中..." : "修正後に再推論"}
           </button>
         </section>
 
-        <section className="panel">
+        <section className="panel result-panel">
           <div className="panel-header">
-            <h2>3. 見積もり結果</h2>
+            <h2>4. 見積もり結果</h2>
             <p>RAGの取得結果とLLM推論に基づく参考値です。</p>
           </div>
           {valuation ? (

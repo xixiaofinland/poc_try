@@ -44,10 +44,20 @@ class RagPipeline:
 
     def estimate(self, description: InstrumentDescription) -> ValuationResult:
         settings = get_settings()
-        query_text = self._build_query(description)
+        query_text = self.build_query(description)
         entries = self.store.query(query_text, settings.rag_top_k)
-        context = self._build_context(entries)
+        context = self.build_context(entries)
+        output_text = self.request_estimate(query_text, context)
+        return self.parse_estimate(output_text)
 
+    def build_query(self, description: InstrumentDescription) -> str:
+        return self._build_query(description)
+
+    def build_context(self, entries: list[RagResult]) -> str:
+        return self._build_context(entries)
+
+    def request_estimate(self, query_text: str, context: str) -> str:
+        settings = get_settings()
         response = self.client.responses.create(
             model=settings.openai_rag_model,
             input=[
@@ -63,8 +73,11 @@ class RagPipeline:
                 }
             ],
         )
+        return response.output_text
 
-        data = _extract_json(response.output_text)
+    @staticmethod
+    def parse_estimate(output_text: str) -> ValuationResult:
+        data = _extract_json(output_text)
         return ValuationResult.model_validate(data)
 
     @staticmethod
