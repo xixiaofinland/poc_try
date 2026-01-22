@@ -24,6 +24,32 @@
 - @vitejs/plugin-react
 - Bun (dev server/package manager)
 
+## Processing flow
+
+```mermaid
+flowchart LR
+  user[User] --> ui[Frontend UI]
+  ui -->|upload image| describe[/POST /api/describe/stream/]
+  describe --> vlm[OpenAI VLM]
+  vlm --> desc[Instrument description JSON]
+  desc -->|SSE result| ui
+
+  ui -->|send description| estimate[/POST /api/estimate/stream/]
+  estimate --> query[Build query]
+  query --> search[Similarity search]
+  search --> context[Build context]
+  context --> rag[OpenAI RAG model]
+  rag --> valuation[Valuation result JSON]
+  valuation -->|SSE result| ui
+
+  subgraph Backend startup
+    seed[Seed data JSONL] --> embed[OpenAI embeddings]
+    embed --> store[(ChromaDB vector store)]
+  end
+
+  store --> search
+```
+
 ## Quick start
 
 ### Backend (FastAPI + uv)
