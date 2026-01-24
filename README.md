@@ -1,8 +1,8 @@
 # used-instrument-valuation-poc
 
-## Tech stack
+## 技术栈
 
-### Backend
+### 后端
 - Python 3.11+
 - FastAPI
 - Uvicorn
@@ -14,68 +14,68 @@
 - Pydantic
 - Pydantic Settings
 - python-multipart
-- uv (package manager/venv)
+- uv（包管理器 / venv）
 
-### Frontend
+### 前端
 - React 18
 - React DOM
 - TypeScript
 - Vite
 - @vitejs/plugin-react
-- Bun (dev server/package manager)
+- Bun（开发服务器 / 包管理器）
 
-## Processing flow
+## 处理流程
 
 ```mermaid
 flowchart LR
-  user[User] --> ui[Frontend UI]
-  ui -->|upload image| describe[/POST /api/describe/stream/]
+  user[用户] --> ui[前端 UI]
+  ui -->|上传图片| describe[/POST /api/describe/stream/]
   describe --> vlm[OpenAI VLM]
-  vlm --> desc[Instrument description JSON]
-  desc -->|SSE result| ui
+  vlm --> desc[乐器描述 JSON]
+  desc -->|SSE 返回| ui
 
-  ui -->|send description| estimate[/POST /api/estimate/stream/]
-  estimate --> query[Build query]
-  query --> search[Similarity search]
-  search --> context[Build context]
-  context --> rag[OpenAI RAG model]
-  rag --> valuation[Valuation result JSON]
-  valuation -->|SSE result| ui
+  ui -->|发送描述| estimate[/POST /api/estimate/stream/]
+  estimate --> query[构建查询]
+  query --> search[相似度检索]
+  search --> context[构建上下文]
+  context --> rag[OpenAI 推理模型]
+  rag --> valuation[估值结果 JSON]
+  valuation -->|SSE 返回| ui
 
-  subgraph Backend startup
-    seed[Seed data JSONL] --> embed[OpenAI embeddings]
-    embed --> store[(ChromaDB vector store)]
+  subgraph 后端启动
+    seed[种子数据 JSONL] --> embed[OpenAI 向量化]
+    embed --> store[(ChromaDB 向量库)]
   end
 
   store --> search
 ```
 
-## Quick start
+## 快速开始
 
-### Backend (FastAPI + uv)
+### 后端（FastAPI + uv）
 ```bash
 cd backend
 uv venv --python 3.13
 source .venv/bin/activate
 uv pip install -e .
 cp .env.example .env
-# edit .env and set OPENAI_API_KEY
+# 编辑 .env，设置 OPENAI_API_KEY
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend (React + Bun)
+### 前端（React + Bun）
 ```bash
 cd frontend
 bun install
 bun run dev
 ```
 
-### Notes
-- The backend uses `chromadb`, which currently requires Python 3.13 or lower.
-- The frontend dev server proxies `/api` to `http://localhost:8000`.
+### 注意事项
+- 后端用到了 `chromadb`，目前要求 Python 版本不高于 3.13。
+- 前端 dev server 会把 `/api` 代理到 `http://localhost:8000`。
 
-## OpenAI model configuration
-Set these in `backend/.env` to control which models are used:
+## OpenAI 模型配置
+在 `backend/.env` 里配置这些变量来控制使用的模型：
 
 ```env
 OPENAI_API_KEY=your_api_key
@@ -83,11 +83,11 @@ OPENAI_VLM_MODEL=gpt-4o-mini
 OPENAI_RAG_MODEL=gpt-4.1-mini
 OPENAI_EMBED_MODEL=text-embedding-3-large
 
-# GPT-5 examples (pick what your account has access to):
+# GPT-5 示例（按你账号实际可用的模型来选）：
 # OPENAI_VLM_MODEL=gpt-5
 # OPENAI_RAG_MODEL=gpt-5-mini
 
-# Optional tuning (useful for GPT-5 series / reasoning models)
+# 可选调参（对 GPT-5 系列 / reasoning 模型更有用）
 # OPENAI_REASONING_EFFORT=medium  # none|minimal|low|medium|high|xhigh
 # OPENAI_REASONING_SUMMARY=auto   # auto|concise|detailed
 # OPENAI_MAX_OUTPUT_TOKENS=2048
@@ -96,20 +96,20 @@ OPENAI_EMBED_MODEL=text-embedding-3-large
 # OPENAI_JSON_MODE=true           # enforce JSON output when possible
 ```
 
-### How to set these params (local vs Azure)
+### 参数配置方法（本地 vs Azure）
 
-#### Local dev (`./scripts/dev.sh`)
-Local runs read `backend/.env` via Pydantic Settings:
+#### 本地开发（`./scripts/dev.sh`）
+本地运行会通过 Pydantic Settings 读取 `backend/.env`：
 ```bash
 cd backend
 cp .env.example .env
-# edit .env
+# 编辑 .env
 ```
 
-#### Azure App Service (production)
-Azure App Service does NOT read `backend/.env` (it’s a local file and is ignored by git). You must set env vars as **App Settings**:
-- Portal: App Service → Configuration → Application settings → “+ New application setting” → Save → Restart
-- CLI (example):
+#### Azure App Service（生产环境）
+Azure App Service 不会读取 `backend/.env`（它是本地文件，而且被 git 忽略）。你必须把这些配置写到 **App Settings（应用设置）**：
+- Portal：App Service → Configuration → Application settings → “+ New application setting” → Save → Restart
+- CLI（示例）：
 
 ```bash
 RG=used-instrument-valuation
@@ -133,37 +133,37 @@ az webapp config appsettings set -g $RG -n $APP --settings \
 az webapp restart -g $RG -n $APP
 ```
 
-Notes:
-- Don’t copy inline comments like `# ...` into Azure setting values.
-- `OPENAI_TEMPERATURE` is ignored for GPT-5 series; set it only for models that support it.
+注意：
+- 不要把 `# ...` 这类行内注释也一起复制到 Azure 的 setting value 里。
+- GPT-5 系列会忽略/不支持 `OPENAI_TEMPERATURE`；只在模型支持时再设置它。
 
-- `OPENAI_VLM_MODEL`: used for image -> description.
-- `OPENAI_RAG_MODEL`: used for price estimation synthesis.
-- `OPENAI_EMBED_MODEL`: used for vector embeddings.
+- `OPENAI_VLM_MODEL`：用于图片 → 描述（vision/VLM）。
+- `OPENAI_RAG_MODEL`：用于估值推理（价格区间、理由、证据等）。
+- `OPENAI_EMBED_MODEL`：用于向量化（embedding）。
 
-## One-command dev
-Run frontend and backend together:
+## 一键开发
+同时启动前端和后端：
 
 ```bash
 ./scripts/dev.sh
 ```
 
-## Deploy to Azure App Service (single container)
+## 部署到 Azure App Service（单容器）
 这个 repo 可以用「单容器」方式部署到 Azure App Service（Linux / Web App for Containers）：
 - 前端：Vite build 后的静态资源
 - 后端：FastAPI API（路径前缀 `/api`）
 
-### Quick mental model（先搞清楚原理）
+### 先搞清楚原理
 - 你不能把镜像“直接推到 App Service”里；必须先把镜像推到镜像仓库（推荐 ACR）。
 - App Service 配置成从仓库“拉取镜像”并运行。
 - 运行后：`/` 是前端页面，`/api/*` 是后端 API。
 
-### Prerequisites（必须准备好）
+### 前置条件（必须准备好）
 - Docker
 - Azure CLI（`az`）并已登录：`az login`
 - 一个 Linux 的 App Service（Web App for Containers）
 
-Note：有些版本的 Azure CLI 会打印 `SyntaxWarning: invalid escape sequence`（它自己依赖的 Python 包触发的 warning）。只要命令返回成功即可忽略。
+说明：有些版本的 Azure CLI 会打印 `SyntaxWarning: invalid escape sequence`（它自己依赖的 Python 包触发的 warning）。只要命令返回成功即可忽略。
 
 ### 0) 先本地跑通（可选但强烈推荐）
 ```bash
@@ -248,7 +248,7 @@ az webapp config container set -g $RG -n $APP \
   --container-registry-password $ACR_PASS
 ```
 
-### 6) 配置运行环境变量（App Settings）
+### 6) 配置运行环境变量（应用设置 / App Settings）
 必须：
 - `WEBSITES_PORT=8000`（容器监听端口，App Service 需要它）
 - `OPENAI_API_KEY`（后端必须）
@@ -283,7 +283,7 @@ az webapp log tail -g $RG -n $APP
 - `https://<your-app>.azurewebsites.net/`
 - `https://<your-app>.azurewebsites.net/api/health`
 
-### 8) 更新发布（新 tag）
+### 8) 更新发布（新 tag / 新标签）
 ```bash
 IMAGE=usedinst:v2
 az acr build -g $RG -r $ACR -t $IMAGE .
@@ -301,7 +301,7 @@ az webapp config container set -g $RG -n $APP \
 az webapp restart -g $RG -n $APP
 ```
 
-### Troubleshooting（遇到 Application Error 怎么办）
+### 排障（遇到 Application Error 怎么办）
 `Application Error` 通常表示：容器没拉下来 / 容器没启动成功 / 启动了但没在期望端口监听。
 
 1) 确认你用的是 Web App 的资源名（`name`），不要把域名当成 `APP`
