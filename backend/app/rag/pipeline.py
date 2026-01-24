@@ -63,7 +63,7 @@ class RagPipeline:
                     ],
                 }
             ],
-            **build_responses_create_kwargs(force_json=True),
+            **build_responses_create_kwargs(model=settings.openai_rag_model, force_json=True),
         )
         return response.output_text
 

@@ -11,6 +11,16 @@ def _strip_inline_comment(text: str) -> str:
     return text.split("#", 1)[0].strip()
 
 
+def _supports_reasoning(model: str) -> bool:
+    normalized = model.strip().casefold()
+    return normalized.startswith(("gpt-5", "o"))
+
+
+def _supports_temperature(model: str) -> bool:
+    normalized = model.strip().casefold()
+    return not normalized.startswith(("gpt-5", "o"))
+
+
 def _find_json_object_span(text: str) -> tuple[int, int] | None:
     start = text.find("{")
     if start < 0:
@@ -68,17 +78,19 @@ def extract_json_object(text: str) -> dict:
     return json.loads(stripped[start:end])
 
 
-def build_responses_create_kwargs(*, force_json: bool = True) -> dict[str, Any]:
+def build_responses_create_kwargs(
+    *, model: str, force_json: bool = True
+) -> dict[str, Any]:
     settings = get_settings()
     kwargs: dict[str, Any] = {}
 
     if settings.openai_max_output_tokens is not None:
         kwargs["max_output_tokens"] = settings.openai_max_output_tokens
 
-    if settings.openai_temperature is not None:
+    if settings.openai_temperature is not None and _supports_temperature(model):
         kwargs["temperature"] = settings.openai_temperature
 
-    if settings.openai_reasoning_effort:
+    if settings.openai_reasoning_effort and _supports_reasoning(model):
         effort = _strip_inline_comment(settings.openai_reasoning_effort).casefold()
         if effort not in _ALLOWED_REASONING_EFFORT:
             raise ValueError(
