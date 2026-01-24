@@ -1,0 +1,12 @@
+.git
+.DS_Store
+
+**/__pycache__/
+*.py[codz]
+
+backend/.venv/
+backend/.rag_store/
+
+frontend/node_modules/
+frontend/dist/
+
