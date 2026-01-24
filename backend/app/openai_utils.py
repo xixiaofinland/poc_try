@@ -4,6 +4,7 @@ from typing import Any
 from app.settings import get_settings
 
 _ALLOWED_REASONING_EFFORT = {"none", "minimal", "low", "medium", "high", "xhigh"}
+_ALLOWED_REASONING_SUMMARY = {"auto", "concise", "detailed"}
 _ALLOWED_TEXT_VERBOSITY = {"low", "medium", "high"}
 
 
@@ -19,6 +20,33 @@ def _supports_reasoning(model: str) -> bool:
 def _supports_temperature(model: str) -> bool:
     normalized = model.strip().casefold()
     return not normalized.startswith(("gpt-5", "o"))
+
+
+def extract_reasoning_summary_lines(response: Any) -> list[str]:
+    lines: list[str] = []
+    for item in getattr(response, "output", None) or []:
+        if getattr(item, "type", None) != "reasoning":
+            continue
+        for summary in getattr(item, "summary", None) or []:
+            text = getattr(summary, "text", "")
+            if not text:
+                continue
+            for raw_line in str(text).splitlines():
+                line = raw_line.strip()
+                if line:
+                    lines.append(line)
+    return lines
+
+
+def extract_usage_meta(response: Any) -> dict[str, int] | None:
+    usage = getattr(response, "usage", None)
+    if not usage:
+        return None
+    return {
+        "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+        "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+    }
 
 
 def _find_json_object_span(text: str) -> tuple[int, int] | None:
@@ -90,14 +118,29 @@ def build_responses_create_kwargs(
     if settings.openai_temperature is not None and _supports_temperature(model):
         kwargs["temperature"] = settings.openai_temperature
 
-    if settings.openai_reasoning_effort and _supports_reasoning(model):
-        effort = _strip_inline_comment(settings.openai_reasoning_effort).casefold()
-        if effort not in _ALLOWED_REASONING_EFFORT:
-            raise ValueError(
-                "OPENAI_REASONING_EFFORT must be one of "
-                + ", ".join(sorted(_ALLOWED_REASONING_EFFORT))
-            )
-        kwargs["reasoning"] = {"effort": effort}
+    if _supports_reasoning(model):
+        reasoning: dict[str, Any] = {}
+
+        if settings.openai_reasoning_effort:
+            effort = _strip_inline_comment(settings.openai_reasoning_effort).casefold()
+            if effort not in _ALLOWED_REASONING_EFFORT:
+                raise ValueError(
+                    "OPENAI_REASONING_EFFORT must be one of "
+                    + ", ".join(sorted(_ALLOWED_REASONING_EFFORT))
+                )
+            reasoning["effort"] = effort
+
+        if settings.openai_reasoning_summary:
+            summary = _strip_inline_comment(settings.openai_reasoning_summary).casefold()
+            if summary not in _ALLOWED_REASONING_SUMMARY:
+                raise ValueError(
+                    "OPENAI_REASONING_SUMMARY must be one of "
+                    + ", ".join(sorted(_ALLOWED_REASONING_SUMMARY))
+                )
+            reasoning["summary"] = summary
+
+        if reasoning:
+            kwargs["reasoning"] = reasoning
 
     text_config: dict[str, Any] = {}
     if settings.openai_text_verbosity:

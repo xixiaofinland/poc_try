@@ -36,6 +36,8 @@ type TerminalLine = {
   isNew?: boolean;
 };
 
+const CONSOLE_LOG_LIMIT = 18;
+
 const formatFileSize = (bytes: number) => {
   if (!Number.isFinite(bytes)) {
     return "--";
@@ -274,6 +276,12 @@ export default function App() {
       "vision.upload_received": () => "画像を受信しました。",
       "vision.image_encoded": () => "画像を正規化しました。",
       "vision.request_sent": () => "VLMへ問い合わせ中...",
+      "vision.model": (meta?: Record<string, number | string>) =>
+        `VLMモデル: ${String(meta?.model ?? "unknown")}`,
+      "vision.reasoning_summary": (meta?: Record<string, number | string>) =>
+        `推論要約: ${String(meta?.text ?? "")}`,
+      "vision.usage": (meta?: Record<string, number | string>) =>
+        `トークン: in=${meta?.input_tokens ?? "--"} out=${meta?.output_tokens ?? "--"} total=${meta?.total_tokens ?? "--"}`,
       "vision.response_parsed": () => "解析結果を構造化しました。",
       "rag.query_build": () => "検索クエリを構築しています...",
       "rag.retrieve_start": () => "ベクトルDBへ検索中...",
@@ -288,6 +296,12 @@ export default function App() {
       },
       "rag.context_build": () => "エビデンスを整理しています...",
       "rag.request_sent": () => "推論モデルへ問い合わせています...",
+      "rag.model": (meta?: Record<string, number | string>) =>
+        `推論モデル: ${String(meta?.model ?? "unknown")}`,
+      "rag.reasoning_summary": (meta?: Record<string, number | string>) =>
+        `推論要約: ${String(meta?.text ?? "")}`,
+      "rag.usage": (meta?: Record<string, number | string>) =>
+        `トークン: in=${meta?.input_tokens ?? "--"} out=${meta?.output_tokens ?? "--"} total=${meta?.total_tokens ?? "--"}`,
     }),
     [],
   );
@@ -304,7 +318,7 @@ export default function App() {
   const appendConsoleLine = (line: string) => {
     setConsoleLines((prev) => {
       const nextLines = [...prev, line];
-      return nextLines.slice(-6);
+      return nextLines.slice(-CONSOLE_LOG_LIMIT);
     });
   };
 
@@ -392,7 +406,7 @@ export default function App() {
           const next = pool[index % pool.length];
           index += 1;
           const nextLines = [...prev, next];
-          return nextLines.slice(-6);
+          return nextLines.slice(-CONSOLE_LOG_LIMIT);
         });
       }, 650);
     }

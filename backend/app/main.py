@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
+from app.openai_utils import extract_reasoning_summary_lines, extract_usage_meta
 from app.rag.pipeline import RagPipeline, get_pipeline
 from app.schemas import InstrumentDescription, ValuationResult
 from app.settings import get_settings
@@ -17,7 +18,7 @@ from app.vlm.client import (
     create_vlm_client,
     describe_instrument,
     parse_description,
-    request_description,
+    request_description_response,
 )
 
 app = FastAPI(title="Used Instrument Valuation API", version="0.1.0")
@@ -103,7 +104,25 @@ async def describe_stream(image: UploadFile = File(...)) -> StreamingResponse:
             yield _sse_event(
                 "step", {"phase": "vision", "index": 2, "status": "start"}
             )
-            output_text = request_description(client, image_url)
+            settings = get_settings()
+            yield _sse_event(
+                "log",
+                {
+                    "code": "vision.model",
+                    "meta": {"model": settings.openai_vlm_model},
+                },
+            )
+
+            response = request_description_response(client, image_url)
+            output_text = response.output_text
+            for line in extract_reasoning_summary_lines(response):
+                yield _sse_event(
+                    "log",
+                    {"code": "vision.reasoning_summary", "meta": {"text": line}},
+                )
+            usage_meta = extract_usage_meta(response)
+            if usage_meta:
+                yield _sse_event("log", {"code": "vision.usage", "meta": usage_meta})
             yield _sse_event("step", {"phase": "vision", "index": 2, "status": "done"})
             yield _sse_event(
                 "step", {"phase": "vision", "index": 3, "status": "start"}
@@ -168,7 +187,21 @@ async def estimate_stream(
             yield _sse_event("step", {"phase": "rag", "index": 2, "status": "done"})
             yield _sse_event("log", {"code": "rag.request_sent"})
             yield _sse_event("step", {"phase": "rag", "index": 3, "status": "start"})
-            output_text = pipeline.request_estimate(query_text, context)
+            yield _sse_event(
+                "log",
+                {"code": "rag.model", "meta": {"model": settings.openai_rag_model}},
+            )
+
+            response = pipeline.request_estimate_response(query_text, context)
+            output_text = response.output_text
+            for line in extract_reasoning_summary_lines(response):
+                yield _sse_event(
+                    "log",
+                    {"code": "rag.reasoning_summary", "meta": {"text": line}},
+                )
+            usage_meta = extract_usage_meta(response)
+            if usage_meta:
+                yield _sse_event("log", {"code": "rag.usage", "meta": usage_meta})
             result = pipeline.parse_estimate(output_text)
             yield _sse_event("step", {"phase": "rag", "index": 3, "status": "done"})
             yield _sse_event(

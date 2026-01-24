@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     openai_reasoning_effort: str | None = Field(
         default=None, alias="OPENAI_REASONING_EFFORT"
     )
+    openai_reasoning_summary: str | None = Field(
+        default="auto", alias="OPENAI_REASONING_SUMMARY"
+    )
     openai_max_output_tokens: int | None = Field(
         default=None, alias="OPENAI_MAX_OUTPUT_TOKENS"
     )

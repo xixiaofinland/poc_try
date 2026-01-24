@@ -20,9 +20,9 @@ def build_image_data_url(image_bytes: bytes, mime_type: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-def request_description(client: OpenAI, image_url: str) -> str:
+def request_description_response(client: OpenAI, image_url: str):
     settings = get_settings()
-    response = client.responses.create(
+    return client.responses.create(
         model=settings.openai_vlm_model,
         input=[
             {
@@ -35,6 +35,10 @@ def request_description(client: OpenAI, image_url: str) -> str:
         ],
         **build_responses_create_kwargs(model=settings.openai_vlm_model, force_json=True),
     )
+
+
+def request_description(client: OpenAI, image_url: str) -> str:
+    response = request_description_response(client, image_url)
     return response.output_text
 
 

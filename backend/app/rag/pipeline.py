@@ -28,6 +28,7 @@ Rules:
 - If references are thin, lower confidence and say so.
 """
 
+
 class RagPipeline:
     def __init__(self, store: RagStore, client: OpenAI) -> None:
         self.store = store
@@ -47,9 +48,9 @@ class RagPipeline:
     def build_context(self, entries: list[RagResult]) -> str:
         return self._build_context(entries)
 
-    def request_estimate(self, query_text: str, context: str) -> str:
+    def request_estimate_response(self, query_text: str, context: str):
         settings = get_settings()
-        response = self.client.responses.create(
+        return self.client.responses.create(
             model=settings.openai_rag_model,
             input=[
                 {
@@ -65,6 +66,9 @@ class RagPipeline:
             ],
             **build_responses_create_kwargs(model=settings.openai_rag_model, force_json=True),
         )
+
+    def request_estimate(self, query_text: str, context: str) -> str:
+        response = self.request_estimate_response(query_text, context)
         return response.output_text
 
     @staticmethod
