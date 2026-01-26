@@ -73,6 +73,8 @@ bun run dev
 ### 注意事项
 - 后端用到了 `chromadb`，目前要求 Python 版本不高于 3.13。
 - 前端 dev server 会把 `/api` 代理到 `http://localhost:8000`。
+- OpenAPI / Swagger UI 地址：`http://localhost:8000/docs`（后端直连）或 `http://localhost:5173/api/docs`（走前端代理，推荐）。
+- OpenAPI JSON 地址：`/api/openapi.json`（例如 `http://localhost:8000/api/openapi.json`）。
 
 ## OpenAI 模型配置
 在 `backend/.env` 里配置这些变量来控制使用的模型：

@@ -7,7 +7,8 @@ from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from app.openai_utils import extract_reasoning_summary_lines, extract_usage_meta
 from app.rag.pipeline import RagPipeline, get_pipeline
@@ -21,7 +22,21 @@ from app.vlm.client import (
     request_description_response,
 )
 
-app = FastAPI(title="Used Instrument Valuation API", version="0.1.0")
+_OPENAPI_TAGS = [
+    {"name": "Health", "description": "Service health checks."},
+    {"name": "Vision", "description": "Image → structured instrument description."},
+    {"name": "Valuation", "description": "Description → valuation result."},
+]
+
+app = FastAPI(
+    title="Used Instrument Valuation API",
+    version="0.1.0",
+    description=(
+        "API for describing a musical instrument from an image and estimating a "
+        "used-market price in JPY."
+    ),
+    openapi_tags=_OPENAPI_TAGS,
+)
 logger = logging.getLogger(__name__)
 
 app.add_middleware(
@@ -59,12 +74,38 @@ def _resolve_frontend_dist_dir() -> Path | None:
     return None
 
 
-@app.get("/api/health")
+@app.get("/api/openapi.json", include_in_schema=False)
+async def openapi_json() -> JSONResponse:
+    return JSONResponse(app.openapi())
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def swagger_ui() -> Response:
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json", title=f"{app.title} - Swagger UI"
+    )
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def redoc_ui() -> Response:
+    return get_redoc_html(openapi_url="/api/openapi.json", title=f"{app.title} - ReDoc")
+
+
+@app.get("/api/health", tags=["Health"], summary="Health check")
 async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/api/describe", response_model=InstrumentDescription)
+@app.post(
+    "/api/describe",
+    response_model=InstrumentDescription,
+    tags=["Vision"],
+    summary="Describe an instrument (image → JSON)",
+    responses={
+        400: {"description": "Bad request"},
+        500: {"description": "VLM request failed"},
+    },
+)
 async def describe(image: UploadFile = File(...)) -> InstrumentDescription:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Unsupported file type")
@@ -80,7 +121,23 @@ async def describe(image: UploadFile = File(...)) -> InstrumentDescription:
         raise HTTPException(status_code=500, detail="VLM request failed") from exc
 
 
-@app.post("/api/describe/stream")
+@app.post(
+    "/api/describe/stream",
+    tags=["Vision"],
+    summary="Stream a description (SSE)",
+    description=(
+        "Streams progress events and a final instrument description as "
+        "Server-Sent Events (SSE)."
+    ),
+    responses={
+        200: {
+            "description": "SSE stream of progress and result events",
+            "content": {"text/event-stream": {}},
+        },
+        400: {"description": "Bad request"},
+        500: {"description": "VLM request failed"},
+    },
+)
 async def describe_stream(image: UploadFile = File(...)) -> StreamingResponse:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Unsupported file type")
@@ -147,7 +204,16 @@ async def describe_stream(image: UploadFile = File(...)) -> StreamingResponse:
     )
 
 
-@app.post("/api/estimate", response_model=ValuationResult)
+@app.post(
+    "/api/estimate",
+    response_model=ValuationResult,
+    tags=["Valuation"],
+    summary="Estimate price (JSON)",
+    responses={
+        400: {"description": "Bad request"},
+        500: {"description": "RAG request failed"},
+    },
+)
 async def estimate(
     description: InstrumentDescription,
     pipeline: RagPipeline = Depends(get_pipeline),
@@ -162,7 +228,23 @@ async def estimate(
         raise HTTPException(status_code=500, detail="RAG request failed") from exc
 
 
-@app.post("/api/estimate/stream")
+@app.post(
+    "/api/estimate/stream",
+    tags=["Valuation"],
+    summary="Stream a price estimate (SSE)",
+    description=(
+        "Streams retrieval / inference progress and a final valuation result as "
+        "Server-Sent Events (SSE)."
+    ),
+    responses={
+        200: {
+            "description": "SSE stream of progress and result events",
+            "content": {"text/event-stream": {}},
+        },
+        400: {"description": "Bad request"},
+        500: {"description": "RAG request failed"},
+    },
+)
 async def estimate_stream(
     description: InstrumentDescription,
     pipeline: RagPipeline = Depends(get_pipeline),

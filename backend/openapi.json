@@ -1,0 +1,514 @@
+{
+  "components": {
+    "schemas": {
+      "Body_describe_api_describe_post": {
+        "properties": {
+          "image": {
+            "format": "binary",
+            "title": "Image",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "Body_describe_api_describe_post",
+        "type": "object"
+      },
+      "Body_describe_stream_api_describe_stream_post": {
+        "properties": {
+          "image": {
+            "format": "binary",
+            "title": "Image",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "Body_describe_stream_api_describe_stream_post",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InstrumentDescription": {
+        "examples": [
+          {
+            "brand": "Fender",
+            "category": "electric guitar",
+            "condition": "Good (minor scratches)",
+            "features": [
+              "SSS pickups",
+              "tremolo bridge"
+            ],
+            "materials": [
+              "alder",
+              "maple"
+            ],
+            "model": "Stratocaster",
+            "notes": "Includes gig bag; serial number not visible.",
+            "year": "1996"
+          }
+        ],
+        "properties": {
+          "brand": {
+            "default": "",
+            "description": "Instrument brand.",
+            "examples": [
+              "Fender"
+            ],
+            "title": "Brand",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "description": "Instrument category (e.g. guitar, violin).",
+            "examples": [
+              "electric guitar"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "condition": {
+            "default": "",
+            "description": "Condition / wear summary.",
+            "examples": [
+              "Good (minor scratches)"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "features": {
+            "description": "Notable features / hardware.",
+            "examples": [
+              [
+                "SSS pickups",
+                "tremolo bridge"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "materials": {
+            "description": "Key materials (if visible / known).",
+            "examples": [
+              [
+                "alder",
+                "maple"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Materials",
+            "type": "array"
+          },
+          "model": {
+            "default": "",
+            "description": "Instrument model.",
+            "examples": [
+              "Stratocaster"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "description": "Extra notes / caveats from the description model.",
+            "examples": [
+              "Includes gig bag; serial number not visible."
+            ],
+            "title": "Notes",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Year of manufacture if known.",
+            "examples": [
+              "1996",
+              "不明"
+            ],
+            "title": "Year"
+          }
+        },
+        "title": "InstrumentDescription",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValuationResult": {
+        "examples": [
+          {
+            "confidence": 0.72,
+            "evidence": [
+              "類似モデルの出品: 95,000〜140,000円（状態: 良）"
+            ],
+            "price_jpy": 120000,
+            "range_jpy": [
+              90000,
+              150000
+            ],
+            "rationale": "参考データの価格帯と状態から、このレンジが妥当と判断しました。"
+          }
+        ],
+        "properties": {
+          "confidence": {
+            "description": "Confidence score between 0 and 1.",
+            "examples": [
+              0.72
+            ],
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "description": "Evidence bullets (Japanese).",
+            "examples": [
+              [
+                "類似モデルの出品: 95,000〜140,000円（状態: 良）"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "price_jpy": {
+            "description": "Estimated fair price in JPY.",
+            "examples": [
+              120000
+            ],
+            "minimum": 0.0,
+            "title": "Price Jpy",
+            "type": "integer"
+          },
+          "range_jpy": {
+            "description": "Low / high price range in JPY.",
+            "examples": [
+              [
+                90000,
+                150000
+              ]
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Range Jpy",
+            "type": "array"
+          },
+          "rationale": {
+            "description": "Valuation rationale (Japanese).",
+            "examples": [
+              "参考データの価格帯と状態から、このレンジが妥当と判断しました。"
+            ],
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "price_jpy",
+          "range_jpy",
+          "confidence",
+          "rationale",
+          "evidence"
+        ],
+        "title": "ValuationResult",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "API for describing a musical instrument from an image and estimating a used-market price in JPY.",
+    "title": "Used Instrument Valuation API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/describe": {
+      "post": {
+        "operationId": "describe_api_describe_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_describe_api_describe_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentDescription"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "description": "VLM request failed"
+          }
+        },
+        "summary": "Describe an instrument (image → JSON)",
+        "tags": [
+          "Vision"
+        ]
+      }
+    },
+    "/api/describe/stream": {
+      "post": {
+        "description": "Streams progress events and a final instrument description as Server-Sent Events (SSE).",
+        "operationId": "describe_stream_api_describe_stream_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_describe_stream_api_describe_stream_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {}
+            },
+            "description": "SSE stream of progress and result events"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "description": "VLM request failed"
+          }
+        },
+        "summary": "Stream a description (SSE)",
+        "tags": [
+          "Vision"
+        ]
+      }
+    },
+    "/api/estimate": {
+      "post": {
+        "operationId": "estimate_api_estimate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstrumentDescription"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "description": "RAG request failed"
+          }
+        },
+        "summary": "Estimate price (JSON)",
+        "tags": [
+          "Valuation"
+        ]
+      }
+    },
+    "/api/estimate/stream": {
+      "post": {
+        "description": "Streams retrieval / inference progress and a final valuation result as Server-Sent Events (SSE).",
+        "operationId": "estimate_stream_api_estimate_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstrumentDescription"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {}
+            },
+            "description": "SSE stream of progress and result events"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "description": "RAG request failed"
+          }
+        },
+        "summary": "Stream a price estimate (SSE)",
+        "tags": [
+          "Valuation"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health check",
+        "tags": [
+          "Health"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Service health checks.",
+      "name": "Health"
+    },
+    {
+      "description": "Image → structured instrument description.",
+      "name": "Vision"
+    },
+    {
+      "description": "Description → valuation result.",
+      "name": "Valuation"
+    }
+  ]
+}
