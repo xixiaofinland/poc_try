@@ -1,5 +1,48 @@
 # used-instrument-valuation-poc
 
+Here’s the end‑to‑end lifecycle mapped to functions + exact line numbers.
+
+  Frontend → Describe (image upload)
+
+  - User clicks “解析と推論を開始” → handleDescribe() in frontend/src/App.tsx:662
+  - Starts SSE call → streamDescribe() in frontend/src/api.ts:193
+  - SSE parsing/dispatch → streamSse() + parseSseChunk() in frontend/src/api.ts:149 and frontend/src/api.ts:78
+  - UI reacts to SSE events → handleStreamEvent() in frontend/src/App.tsx:325
+
+  Backend → Describe (SSE endpoint)
+
+  - SSE endpoint → describe_stream() in backend/app/main.py:141
+  - Emits progress/log events → _sse_event() helper in backend/app/main.py:51
+  - VLM call:
+      - Create client → create_vlm_client() in backend/app/vlm/client.py:23
+      - Encode image → build_image_data_url() in backend/app/vlm/client.py:30
+      - Request OpenAI → request_description_response() in backend/app/vlm/client.py:35
+      - Parse JSON → parse_description() in backend/app/vlm/client.py:57
+      - JSON extraction helper → extract_json_object() in backend/app/openai_utils.py:88
+  - Respond with final InstrumentDescription → backend/app/main.py:187 to backend/app/main.py:191
+  - Model schema → InstrumentDescription in backend/app/schemas.py:4
+
+  Frontend → Auto‑estimate
+
+  - After vision result, auto‑estimate trigger → useEffect() in frontend/src/App.tsx:801
+
+  Frontend → Estimate (description JSON)
+
+  - Manual or auto → handleEstimate() in frontend/src/App.tsx:739
+  - Starts SSE call → streamEstimate() in frontend/src/api.ts:212
+  - Same SSE parsing → frontend/src/api.ts:149 and frontend/src/api.ts:78
+
+  Backend → Estimate (SSE endpoint)
+
+  - SSE endpoint → estimate_stream() in backend/app/main.py:248
+  - Build query → RagPipeline.build_query() in backend/app/rag/pipeline.py:57 (delegates to _build_query() at backend/app/rag/pipeline.py:91)
+  - Retrieve similar docs → RagStore.query() in backend/app/rag/store.py:54
+  - Build context → RagPipeline.build_context() in backend/app/rag/pipeline.py:60 (delegates to _build_context() at backend/app/rag/pipeline.py:106)
+  - OpenAI call for valuation → request_estimate_response() in backend/app/rag/pipeline.py:63
+  - Parse JSON → parse_estimate() in backend/app/rag/pipeline.py:86 → extract_json_object() in backend/app/openai_utils.py:88
+  - Respond with final ValuationResult → backend/app/main.py:287 to backend/app/main.py:290
+  - Model schema → ValuationResult in backend/app/schemas.py:56
+
 ## 技术栈
 
 ### 后端
