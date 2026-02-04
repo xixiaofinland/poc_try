@@ -2,6 +2,17 @@
 
 Here’s the end‑to‑end lifecycle mapped to functions + exact line numbers.
 
+Here’s what I’d pay attention to as a learner/coder, ordered by “most learning value” in this repo:
+
+- The end‑to‑end flow in README.md—it maps the user actions to concrete functions/lines so you can jump straight to the moving parts.
+- How SSE streaming is done front‑to‑back: frontend/src/api.ts (SSE parsing + dispatch) and backend/app/main.py (SSE endpoints + event helpers).
+- The contract between frontend and backend: schemas in backend/app/schemas.py and how frontend reacts to events in frontend/src/App.tsx.
+- The VLM (image → description) call path: backend/app/vlm/client.py plus JSON extraction in backend/app/openai_utils.py.
+- The RAG pipeline (estimate path): backend/app/rag/pipeline.py, backend/app/rag/store.py, and the seed data in backend/app/rag/data/seed.jsonl.
+- Environment + model configuration: backend/app/settings.py, .env usage in backend/README.md, and how those flow into runtime behavior.
+- Frontend wiring and state: frontend/src/App.tsx for key handlers and UI flow; frontend/src/api.ts for all backend IO.
+- Deployment shape: Dockerfile, start.sh, and the Azure guidance in README.md (useful to see how a full‑stack app is packaged).
+
   Frontend → Describe (image upload)
 
   - User clicks “解析と推論を開始” → handleDescribe() in frontend/src/App.tsx:662

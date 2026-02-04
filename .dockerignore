@@ -1,4 +1,8 @@
-.git
+.ctrl-h
+gctrl-h
+ictrl-h
+tctrl-h
+
 .DS_Store
 
 **/__pycache__/
@@ -8,5 +12,9 @@ backend/.venv/
 backend/.rag_store/
 
 frontend/node_modules/
+frontend/dist/
+ctrl-h
+frontend/dist/
+frontend/dist/
 frontend/dist/
 
